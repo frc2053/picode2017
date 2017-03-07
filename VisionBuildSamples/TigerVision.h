@@ -5,8 +5,8 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
-#include <ntcore.h>
-#include <networktables/NetworkTable.h>
+//#include <ntcore.h>
+//#include <networktables/NetworkTable.h>
 
 #include <iostream>
 #include <stdio.h>

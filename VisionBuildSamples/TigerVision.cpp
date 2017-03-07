@@ -19,6 +19,21 @@ TigerVision::TigerVision(int resizeX = 320, int resizeY = 240) {
 }
 
 cv::Mat TigerVision::FindTarget(cv::Mat input) {
+
+	float aspect; //aspect ratio
+	float widthAvg; // Average of two rectangle widths
+	int correctedMidx; //Midpoint adjusted for camera offset
+					   //The correction is scaled assuming the entire
+					   //target width is visible. Otherwise the
+					   //correction will be too little, but should
+					   //become more accurate as more of the target
+					   //comes into view.
+	cv::Point midPoint; //Midpoint of two rectangles
+	cv::Rect targetRectangle; //A rectangle work variable
+	int badone; //Rectangle to ignore, in the case when 3 are seen
+	float aspectA, aspectB; //Temp variables for case 3
+	cv::Rect targetRectA, targetRectB; //Temp variables for case 3
+
 	//resets 2D array of points for next time through loop
 	contours.clear();
 	selected.clear();
@@ -43,32 +58,136 @@ cv::Mat TigerVision::FindTarget(cv::Mat input) {
 
 	std::vector<cv::Point> midPointsOfSelected;
 
-	if (selected.size() == 2) {
-		float aspect;
-		for (int i = 0; i < selected.size(); i++) {
-			cv::Rect targetRectangle = cv::boundingRect(selected[i]);
-			aspect = (float)targetRectangle.width / (float)targetRectangle.height;
+	switch(selected.size()) {
+		case 1:
+			targetRectangle = cv::boundingRect(selected[0]);
+			aspect = (float) targetRectangle.width / (float) targetRectangle.height;
 			centerX = targetRectangle.br().x - targetRectangle.width / 2;
 			centerY = targetRectangle.br().y - targetRectangle.height / 2;
-			targetCenter = cv::Point(centerX, centerY);
-			midPointsOfSelected.push_back(targetCenter);
-			angleToTarget = TigerVision::CalculateAngleBetweenCameraAndPixel();
-		}
-		//finds midpoint of two rectangles
-		cv::Point midPoint = (midPointsOfSelected[0] + midPointsOfSelected[1]) * 0.5;
-		
-		//visionTable->PutNumber("centerX", midPoint.x);
-		//visionTable->PutNumber("centerY", midPoint.y);
-		
-		cv::line(imgResize, centerPixel, midPoint, RED);
-		cv::circle(imgResize, midPoint, 3, RED);
-		if (aspect < 1) {
-			cv::putText(imgResize, "Gear", cv::Point(0, 45), cv::FONT_HERSHEY_PLAIN, 1, RED);
-		}
-		else {
-			cv::putText(imgResize, "Boiler", cv::Point(0, 45), cv::FONT_HERSHEY_PLAIN, 1, RED);
-		}
-		TigerVision::DrawCoords(midPoint);
+			if(aspect < 1) {
+				if(centerX > 160) { //Target to right
+					//2.0625 - 4.125 / 2 distance in inches to midway between rectangles
+					midPoint.x = centerX + 2.0625 * targetRectangle.width;
+				}
+				else { //Target to left
+					midPoint.x = centerX - 2.0625 * targetRectangle.width;
+				}
+				//Note that we might have correctedMidx < 0 or > 320.
+				//That just means our aim point is too far off to one side to see.
+				correctedMidx = midPoint.x - (CameraOffset * targetRectangle.width) / 2;
+				midPoint.y = centerY;
+				visionTable->PutNumber("centerX", correctedMidx);
+				visionTable->PutNumber("centerY", midPoint.y);
+			}
+			else { //Just aim for the corrected center of rectangle
+				correctedMidx = centerX - (CameraOffset * targetRectangle.width) / 15;
+				visionTable->PutNumber("centerX", correctedMidx);
+				visionTable->PutNumber("centerY", midPoint.y);
+			}
+			break;
+		case 2:
+			widthAvg = 0.0;
+			float aspect;
+			for (int i = 0; i < selected.size(); i++) {
+				cv::Rect targetRectangle = cv::boundingRect(selected[i]);
+				aspect = (float)targetRectangle.width / (float)targetRectangle.height;
+				centerX = targetRectangle.br().x - targetRectangle.width / 2;
+				centerY = targetRectangle.br().y - targetRectangle.height / 2;
+				widthAvg += targetRectangle.width / 2;
+				targetCenter = cv::Point(centerX, centerY);
+				midPointsOfSelected.push_back(targetCenter);
+				angleToTarget = TigerVision::CalculateAngleBetweenCameraAndPixel();
+			}
+			//finds midpoint of two rectangles
+			cv::Point midPoint = (midPointsOfSelected[0] + midPointsOfSelected[1]) * 0.5;
+			
+			if(aspect < 1) {
+				correctedMidx = midPoint.x - CameraOffset * widthAvg / 2;
+			}
+			else {
+				correctedMidx = midPoint.x - CameraOffset * widthAvg / 15;
+			}
+
+			visionTable->PutNumber("centerX", correctedMidx);
+			visionTable->PutNumber("centerY", midPoint.y);
+
+			cv::line(imgResize, centerPixel, midPoint, RED);
+			cv::circle(imgResize, midPoint, 3, RED);
+			if (aspect < 1) {
+				cv::putText(imgResize, "Gear", cv::Point(0, 45), cv::FONT_HERSHEY_PLAIN, 1, RED);
+			}
+			else {
+				cv::putText(imgResize, "Boiler", cv::Point(0, 45), cv::FONT_HERSHEY_PLAIN, 1, RED);
+			}
+			TigerVision::DrawCoords(midPoint);
+			break;
+		case 3:
+			/* The general idea in the case of seeing three rectangles is that  */
+			/* we need to throw out one.  If looking at the gear target, the    */
+			/* two "good" ones should have an aspect ratio less than one, their */
+			/* bottoms should be at the same height, and they should be the     */
+			/* same height.  For the boiler, we ignore the aspect ratio because */
+			/* if we see just a small section it might be less than one.  But   */
+			/* the "good" pair should have identical widths and left sides.     */
+			//We choose "within 5 pixels to define "same".
+			badone = -1; // -1 indicates not found
+			for(int i = 0; (i < 3) && (badone == -1); i++) {
+				targetRectA = cv::boundingRect(selected[(i + 1)]);
+				targetRectB = cv::boundingRect(selected[(i + 2)]);
+				aspectA = (float) targetRectA.width / (float) targetRectA.height;
+				aspectB = (float) targetRectB.width / (float) targetRectB.height;
+				if((aspectA < 1) && (aspectB < 1) && (abs(targetRectA.br().y - targetRectB.br().y) < 6) && (abs(targetRectA.width - targetRectB.width) < 6)) {
+					badone = i;
+				}
+			}
+			for(int i = 0; (i < 3) && (badone == -1); i++)  {  // boiler possibility
+   				targetRectA = cv::boundingRect(selected[(i+1)//3]);
+   				targetRectB = cv::boundingRect(selected[(i+2)//3]);
+   				if ((abs(targetRectA.br().x - targetRectB.br().x) < 6) && (abs(targetRectA.width - targetRectB.width) < 6)) {
+					badone = i;
+				}
+  			}
+			/* Now, if we have found a rectangle to ignore, do the same as */
+ 			/* for case 2 with the remaining two rectangles.               */
+  			if (badone /= -1)  {
+				widthAvg = 0.0;
+				for (i = 0; i < selected.size(); i++) {
+					if (i /= badone) {  // Don't use the bad one
+						targetRectangle = cv::boundingRect(selected[i]);
+						aspect = (float)targetRectangle.width / (float)targetRectangle.height;
+						centerX = targetRectangle.br().x - targetRectangle.width / 2;
+						centerY = targetRectangle.br().y - targetRectangle.height / 2;
+						widthAvg += targetRectangle.width / 2;
+						targetCenter = cv::Point(centerX, centerY);
+						midPointsOfSelected.push_back(targetCenter);
+						angleToTarget = TigerVision::CalculateAngleBetweenCameraAndPixel();
+					}
+				}
+				//finds midpoint of two rectangles
+				midPoint = (midPointsOfSelected[0] + midPointsOfSelected[1]) * 0.5;
+
+				if (aspect < 1) {  // found "Gear" target
+					correctedMidx = midPoint.x - CameraOffset*widthAvg/2;
+				} 
+				else {  // found "Boiler" target
+					correctedMidx = midPoint.x - CameraOffset*widthAvg/15;
+				}
+				visionTable->PutNumber("centerX", correctedMidx);
+				visionTable->PutNumber("centerY", midPoint.y);
+
+				cv::line(imgResize, centerPixel, midPoint, RED);
+				cv::circle(imgResize, midPoint, 3, RED);
+				if (aspect < 1) {
+					cv::putText(imgResize, "Gear", cv::Point(0, 45), cv::FONT_HERSHEY_PLAIN, 1, RED);
+				} 
+				else {
+					cv::putText(imgResize, "Boiler", cv::Point(0, 45), cv::FONT_HERSHEY_PLAIN, 1, RED);
+				}
+				TigerVision::DrawCoords(midPoint);
+  			}
+			break;
+		default:
+			break;
 	}
 	return imgResize;
 }
