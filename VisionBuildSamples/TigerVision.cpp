@@ -1,5 +1,5 @@
 #include "TigerVision.h"
-
+ 
 TigerVision::TigerVision() {
 	imageSize = cv::Size(320,240);
 	centerPixel = cv::Point(320 / 2 - .5, 240 / 2);
@@ -60,6 +60,7 @@ cv::Mat TigerVision::FindTarget(cv::Mat input) {
 
 	switch(selected.size()) {
 		case 1:
+//			std::cout << "One object found" << std::endl;
 			targetRectangle = cv::boundingRect(selected[0]);
 			aspect = (float) targetRectangle.width / (float) targetRectangle.height;
 			centerX = targetRectangle.br().x - targetRectangle.width / 2;
@@ -86,6 +87,7 @@ cv::Mat TigerVision::FindTarget(cv::Mat input) {
 			}
 			break;
 		case 2:
+//			std::cout << "Two object found" << std::endl;
 			widthAvg = 0.0;
 			float aspect;
 			for (int i = 0; i < selected.size(); i++) {
@@ -99,7 +101,7 @@ cv::Mat TigerVision::FindTarget(cv::Mat input) {
 				angleToTarget = TigerVision::CalculateAngleBetweenCameraAndPixel();
 			}
 			//finds midpoint of two rectangles
-			cv::Point midPoint = (midPointsOfSelected[0] + midPointsOfSelected[1]) * 0.5;
+			midPoint = (midPointsOfSelected[0] + midPointsOfSelected[1]) * 0.5;
 			
 			if(aspect < 1) {
 				correctedMidx = midPoint.x - CameraOffset * widthAvg / 2;
@@ -122,6 +124,7 @@ cv::Mat TigerVision::FindTarget(cv::Mat input) {
 			TigerVision::DrawCoords(midPoint);
 			break;
 		case 3:
+			std::cout << "Three object found" << std::endl;
 			/* The general idea in the case of seeing three rectangles is that  */
 			/* we need to throw out one.  If looking at the gear target, the    */
 			/* two "good" ones should have an aspect ratio less than one, their */
@@ -132,27 +135,32 @@ cv::Mat TigerVision::FindTarget(cv::Mat input) {
 			//We choose "within 5 pixels to define "same".
 			badone = -1; // -1 indicates not found
 			for(int i = 0; (i < 3) && (badone == -1); i++) {
-				targetRectA = cv::boundingRect(selected[(i + 1)]);
-				targetRectB = cv::boundingRect(selected[(i + 2)]);
+				targetRectA = cv::boundingRect(selected[(i + 1) % 3]);
+				targetRectB = cv::boundingRect(selected[(i + 2) % 3]);
 				aspectA = (float) targetRectA.width / (float) targetRectA.height;
 				aspectB = (float) targetRectB.width / (float) targetRectB.height;
 				if((aspectA < 1) && (aspectB < 1) && (abs(targetRectA.br().y - targetRectB.br().y) < 6) && (abs(targetRectA.width - targetRectB.width) < 6)) {
 					badone = i;
+					std::cout << "bad gear: " << i << std::endl;
+
 				}
 			}
 			for(int i = 0; (i < 3) && (badone == -1); i++)  {  // boiler possibility
-   				targetRectA = cv::boundingRect(selected[(i+1)//3]);
-   				targetRectB = cv::boundingRect(selected[(i+2)//3]);
+   				targetRectA = cv::boundingRect(selected[(i+1) % 3]);
+   				targetRectB = cv::boundingRect(selected[(i+2) % 3]);
    				if ((abs(targetRectA.br().x - targetRectB.br().x) < 6) && (abs(targetRectA.width - targetRectB.width) < 6)) {
 					badone = i;
+					std::cout << "bad boiler: " << i << std::endl;
 				}
   			}
 			/* Now, if we have found a rectangle to ignore, do the same as */
  			/* for case 2 with the remaining two rectangles.               */
-  			if (badone /= -1)  {
+  			if (badone != -1)  {
+				std::cout << "got a bad one: " << badone << std::endl;
 				widthAvg = 0.0;
-				for (i = 0; i < selected.size(); i++) {
-					if (i /= badone) {  // Don't use the bad one
+				for (int i = 0; i < selected.size(); i++) {
+					if (i != badone) {  // Don't use the bad one
+						std::cout << "use me: " << i << std::endl;
 						targetRectangle = cv::boundingRect(selected[i]);
 						aspect = (float)targetRectangle.width / (float)targetRectangle.height;
 						centerX = targetRectangle.br().x - targetRectangle.width / 2;
@@ -168,9 +176,11 @@ cv::Mat TigerVision::FindTarget(cv::Mat input) {
 
 				if (aspect < 1) {  // found "Gear" target
 					correctedMidx = midPoint.x - CameraOffset*widthAvg/2;
+					std::cout << "got a gear maybe " << std::endl;
 				} 
 				else {  // found "Boiler" target
 					correctedMidx = midPoint.x - CameraOffset*widthAvg/15;
+					std::cout << "got a boiler maybe " << std::endl;
 				}
 				visionTable->PutNumber("centerX", correctedMidx);
 				visionTable->PutNumber("centerY", midPoint.y);
@@ -187,6 +197,7 @@ cv::Mat TigerVision::FindTarget(cv::Mat input) {
   			}
 			break;
 		default:
+//			std::cout << "none/too many object found" << std::endl;
 			break;
 	}
 	return imgResize;

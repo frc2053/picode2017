@@ -6,7 +6,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 //#include <ntcore.h>
-//#include <networktables/NetworkTable.h>
+#include <networktables/NetworkTable.h>
 
 #include <iostream>
 #include <stdio.h>
@@ -43,6 +43,8 @@ private:
 	const int ASPECT_RATIO = 1;
 	const float CAMERA_FOV = 47;
 	const float PI = 3.1415926535897;
+	
+	const float CameraOffset = 8.375;
 
 	std::ofstream logFile;
 	const std::string FILE_EXTENSION = ".jpg";
@@ -50,7 +52,7 @@ private:
 	std::string outputFileName;
 
 	cv::VideoWriter writer;
-
+ 
 	int centerX;
 	int centerY;
 	float degreesPerPixel;
