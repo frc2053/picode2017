@@ -112,6 +112,15 @@ cv::Mat TigerVision::FindTarget(cv::Mat input) {
 
 			visionTable->PutNumber("centerX", correctedMidx);
 			visionTable->PutNumber("centerY", midPoint.y);
+			
+			//ADDED ON 3/13/17
+			cv::Rect leftRect = cv::boundingRect(selected[0]);
+			cv::Rect leftRect = cv::boundingRect(selected[1]);
+			int distanceToCenterLeft = (320/2) - (leftRect.br().x - leftRect.width / 2);
+			int distanceToCenterRight = (320/2) - (rightRect.br().x - rightRect.width / 2);
+			
+			visionTable->PutNumber("LeftDistanceToCenter", distanceToCenterLeft);
+			visionTable->PutNumber("RightDistanceToCenter", distanceToCenterRight);
 
 			cv::line(imgResize, centerPixel, midPoint, RED);
 			cv::circle(imgResize, midPoint, 3, RED);
@@ -182,6 +191,17 @@ cv::Mat TigerVision::FindTarget(cv::Mat input) {
 					correctedMidx = midPoint.x - CameraOffset*widthAvg/15;
 					std::cout << "got a boiler maybe " << std::endl;
 				}
+				
+				
+				//ADDED ON 3/13/17
+				cv::Rect leftRect = cv::boundingRect(selected[0]);
+				cv::Rect leftRect = cv::boundingRect(selected[1]);
+				int distanceToCenterLeft = (320/2) - (leftRect.br().x - leftRect.width / 2);
+				int distanceToCenterRight = (320/2) - (rightRect.br().x - rightRect.width / 2);
+			
+				visionTable->PutNumber("LeftDistanceToCenter", distanceToCenterLeft);
+				visionTable->PutNumber("RightDistanceToCenter", distanceToCenterRight);
+				
 				visionTable->PutNumber("centerX", correctedMidx);
 				visionTable->PutNumber("centerY", midPoint.y);
 
